@@ -31,96 +31,17 @@ import java.util.concurrent.locks.Lock;
 @SpringBootApplication
 public class LoxApplication {
 
-	public static void main(String[] args) {
-		SpringApplication.run(LoxApplication.class, args);
-	}
+    public static void main(String[] args) {
+        SpringApplication.run(LoxApplication.class, args);
+    }
 
-	@Bean
-	DefaultLockRepository defaultLockRepository(DataSource dataSource) {
-		return new DefaultLockRepository(dataSource);
-	}
+    @Bean
+    DefaultLockRepository defaultLockRepository(DataSource dataSource) {
+        return new DefaultLockRepository(dataSource);
+    }
 
-	@Bean
-	JdbcLockRegistry jdbcLockRegistry(LockRepository repository) {
-		return new JdbcLockRegistry(repository);
-	}
-}
-
-
-@RestController
-@Log4j2
-@RequiredArgsConstructor
-class LockedResourceController {
-
-	private final LockRegistry registry;
-	private final ReservationRepository repository;
-
-	@GetMapping("/update/{id}/{name}/{time}")
-	Reservation update(@PathVariable int id,
-																				@PathVariable String name,
-																				@PathVariable long time) throws Exception {
-
-		Lock lock = registry.obtain(Integer.toString(id));
-		boolean acquired = lock.tryLock(1, TimeUnit.SECONDS);
-		if (acquired) {
-			try {
-				log.info("looking for record # " + id);
-				this.repository.findById(id).ifPresent(r -> {
-					r.setName(name);
-					repository.save(r);
-				});
-				Thread.sleep(time);
-			}
-			catch (Exception e) {
-				ReflectionUtils.rethrowRuntimeException(e);
-			}
-			finally {
-				lock.unlock();
-			}
-		}
-		return this.repository.findById(id).orElseThrow(() -> new IllegalArgumentException("no matching record!"));
-	}
-
-
-}
-
-@Service
-@RequiredArgsConstructor
-class ReservationRepository {
-
-	private final JdbcTemplate template;
-	private final RowMapper<Reservation> mapper = (resultSet, i) -> new Reservation(resultSet.getInt("id"), resultSet.getString("name"));
-
-	Optional<Reservation> findById(int id) {
-		var reservations = this.template
-			.query("select * from reservation where id =? ", this.mapper, id);
-		Iterator<Reservation> iterator = reservations.iterator();
-		if (iterator.hasNext()) {
-			return Optional.ofNullable(iterator.next());
-		}
-		return Optional.empty();
-	}
-
-	Collection<Reservation> findAll() {
-		return this.template.query("select * from reservation ", this.mapper);
-	}
-
-	Reservation save(Reservation r) {
-		return this
-			.template
-			.execute("update reservation set name = ? where id =? ", (PreparedStatement ps) -> {
-				ps.setString(1, r.getName());
-				ps.setInt(2, r.getId());
-				ps.execute();
-				return findById(r.getId()).get();
-			});
-	}
-}
-
-@Data
-@AllArgsConstructor
-@NoArgsConstructor
-class Reservation {
-	private Integer id;
-	private String name;
+    @Bean
+    JdbcLockRegistry jdbcLockRegistry(LockRepository repository) {
+        return new JdbcLockRegistry(repository);
+    }
 }
